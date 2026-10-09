@@ -19,7 +19,6 @@ namespace VirtualKVM
 
         private int flagKeySwitch = 0;
         private bool keyAllowed = true;   // true = 로컬( 호스트 PC )로 입력, false = 원격으로 포워딩
-        private bool mouseAllowed = true;
 
         private const int VK_LSHIFT = 0xa0;
         private const int VK_LCONTROL = 0xa2;
@@ -98,9 +97,15 @@ namespace VirtualKVM
             }
 
             keyAllowed = true;
-            mouseAllowed = true;
             flagKeySwitch = 0;
             watchdog_reboot_tries = 0;
+
+            // 마우스 기준점을 현재 커서 위치로 초기화 (전환 시 커서 점프 방지)
+            Win32.POINT cursor_pt;
+            win32Ctrl.getCursorPos(out cursor_pt);
+            prevX = cursor_pt.x;
+            prevY = cursor_pt.y;
+
             watchdogTimer.Start();
 
             SetTrayIcon(VirtualKVM.Properties.Resources.ico_linked);
@@ -116,7 +121,6 @@ namespace VirtualKVM
 
             // 순서 중요: 입력 포워딩 중단 -> 훅 해제 -> 데몬/TCP 종료
             keyAllowed = true;
-            mouseAllowed = true;
 
             win32Ctrl.UninsatllHook();
             win32Ctrl.KeyHookEvent -= Win32Ctrl_KeyHookEvent;
@@ -182,6 +186,8 @@ namespace VirtualKVM
         {
             bool isSysKey = false;
             byte keyCode = 0;
+            // 지금 이 이벤트가 "전환 조합키의 release"인지 여부 (해당 이벤트만 로컬 통과)
+            bool switching_release = false;
 
             // WM_KEYUP / WM_SYSKEYUP 만으로 구분하면 Alt 조합키(WM_SYSKEY*)에서
             // 키가 눌린 상태로 남아 "키 눌림 고착(stuck key)"과 연결 불안을 유발한다.
@@ -189,7 +195,12 @@ namespace VirtualKVM
                 wParam == (IntPtr)Win32.WM_KEYUP ||
                 wParam == (IntPtr)Win32.WM_SYSKEYUP;
 
-            if (!isKeyUp)
+            // KBDLLHOOKSTRUCT.flags bit4(0x10) = 키 반복 autorepeat.
+            // 반복 DOWN 을 무시하지 않으면 전환 조합키를 길게 눌렀을 때
+            // 토글 후 플래그가 즉시 다시 채워져 오토-토글이 일어난다.
+            bool is_repeat = !isKeyUp && (lParam.flags & 0x10) != 0;
+
+            if (!isKeyUp && !is_repeat)
             {
                 switch (lParam.vkCode)
                 {
@@ -206,50 +217,57 @@ namespace VirtualKVM
             }
             else
             {
-                if (flagKeySwitch == 7)
+                bool isSwitchKey =
+                    lParam.vkCode == VK_LMENU ||
+                    lParam.vkCode == VK_LSHIFT ||
+                    lParam.vkCode == VK_LCONTROL;
+
+                // 조합키 세 개가 모두 눌린 상태에서 "전환 조합키 중 하나"가
+                // 놓여질 때만 제어권을 토글한다.
+                // (조합키와 무관한 키가 먼저 놓여도 토글되던 버그 제거)
+                if (isSwitchKey && flagKeySwitch == 7)
                 {
                     keyAllowed = !keyAllowed;
-                    mouseAllowed = !mouseAllowed;
+                    flagKeySwitch = 0; // 다음 토글은 조합키를 다시 모두 눌러야 발동
 
                     AllowSwitchKey[0] = 1;
                     AllowSwitchKey[1] = 1;
                     AllowSwitchKey[2] = 1;
 
-                    // 전환 조합키를 원격에 Up 으로 flush 해서 원격 쪽 modifier 고착을 방지한다.
-                    Flush_Modifier_Up(VK_LMENU);
-                    Flush_Modifier_Up(VK_LCONTROL);
-                    Flush_Modifier_Up(VK_LSHIFT);
+                    // 원격에 눌려 있던 키/모디파이어/마우스 버튼을 모두 해제하여
+                    // 원격 쪽 고착(stuck)을 방지한다.
+                    localCtrl.Flush_Pressed_State();
                 }
 
+                // switching_release 는 "방금 놓인 전환 키의 release 이벤트"에만 true.
+                // (전환 키가 눌려 있는 동안 다른 키까지 로컬로 새던 버그 제거)
                 switch (lParam.vkCode)
                 {
                     case VK_LMENU:
-                        {
-                            flagKeySwitch &= ~1;
-                            AllowSwitchKey[0] = 0;
-                        }
+                        flagKeySwitch &= ~1;
+                        switching_release = AllowSwitchKey[0] != 0;
+                        AllowSwitchKey[0] = 0;
                         break;
                     case VK_LSHIFT:
-                        {
-                            flagKeySwitch &= ~2;
-                            AllowSwitchKey[1] = 0;
-                        }
+                        flagKeySwitch &= ~2;
+                        switching_release = AllowSwitchKey[1] != 0;
+                        AllowSwitchKey[1] = 0;
                         break;
                     case VK_LCONTROL:
-                        {
-                            flagKeySwitch &= ~4;
-                            AllowSwitchKey[2] = 0;
-                        }
+                        flagKeySwitch &= ~4;
+                        switching_release = AllowSwitchKey[2] != 0;
+                        AllowSwitchKey[2] = 0;
                         break;
                 }
             }
 
-            bool switching_release = AllowSwitchKey[0] != 0 || AllowSwitchKey[1] != 0 || AllowSwitchKey[2] != 0;
-
             if (!keyAllowed)
             {
                 if (!keyCodeTranslator.translateKey(lParam.vkCode, ref isSysKey, ref keyCode))
-                    return true; // 매핑 없는 키는 로컬 처리
+                {
+                    // 매핑 없는 키: 원격에는 보내지 않는다. (전환 키 release 경로만 로컬 통과)
+                    return switching_release;
+                }
 
                 if (isSysKey)
                 {
@@ -273,15 +291,6 @@ namespace VirtualKVM
             return keyAllowed || switching_release;
         }
 
-        private void Flush_Modifier_Up(int vkCode)
-        {
-            bool isSysKey = false;
-            byte keyCode = 0;
-
-            if (keyCodeTranslator.translateKey((uint)vkCode, ref isSysKey, ref keyCode))
-                localCtrl.Keyboard_Up((RaspberryPi_Lib.Control_Key)keyCode);
-        }
-
         private int prevX = 0;
         private int prevY = 0;
 
@@ -292,21 +301,17 @@ namespace VirtualKVM
         private const int WM_RBUTTONDOWN = 0x0204;
         private const int WM_RBUTTONUP = 0x0205;
         private const int WM_MOUSEMOVE = 0x0200;
-        private const int WM_MOUSEWHEEL = 0x020A;
 
         private bool Win32Ctrl_MouseHookEvent(int nCode, IntPtr wParam, Win32.MouseHookStruct lParam)
         {
-            // 제어권 획득 직후: 원격 전송 없이 현재 커서 위치를 기준점으로만 기록한다.
-            if (mouseAllowed)
-            {
-                Win32.POINT pt;
-                win32Ctrl.getCursorPos(out pt);
-
-                prevX = pt.x;
-                prevY = pt.y;
-
-                mouseAllowed = !mouseAllowed;
-            }
+            // 기준점(prevX/prevY)을 모든 이벤트에서 갱신한다.
+            // 과거 구현은 mouseAllowed 플래그로 최초 1회만 기준점을 갱신해
+            // 로컬 사용 중 커서가 옮겨도 prev 가 낡아, 원격 전환 첫 이동에서
+            // 커서가 크게 튀는 점프 버그가 있었다.
+            int dx = lParam.pt.x - prevX;
+            int dy = lParam.pt.y - prevY;
+            prevX = lParam.pt.x;
+            prevY = lParam.pt.y;
 
             if (!keyAllowed)
             {
@@ -331,15 +336,12 @@ namespace VirtualKVM
                         localCtrl.Mouse_Up(RaspberryPi_Lib.MouseButton.Right);
                         break;
                     case WM_MOUSEMOVE:
-                        int dx = lParam.pt.x - prevX;
-                        int dy = lParam.pt.y - prevY;
                         if (dx != 0 || dy != 0)
-                        {
                             localCtrl.Mouse_Move(dx, dy);
-                            prevX = lParam.pt.x;
-                            prevY = lParam.pt.y;
-                        }
                         break;
+                    // WM_MOUSEWHEEL / WM_MOUSEHWHEEL:
+                    // USB HID mouse report_desc 에 휠 축이 없어 지원하지 않는다.
+                    // (지원하려면 report_desc + 펌웨어 + 클라이언트 동시 수정 필요)
                 }
             }
 

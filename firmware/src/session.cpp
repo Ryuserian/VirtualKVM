@@ -114,8 +114,8 @@ bool Session::Pump() {
     uint8_t buf[64];
     while (alive_) {
         ssize_t n = ::read(client_fd_, buf, sizeof(buf));
-        if (n == 0) // FIN
-            break;
+        if (n == 0) // peer FIN -> 세션 종료. alive_ 를 내려 서버가 세션을 제거하도록 한다.
+            break;    // (v1 은 여기서 alive_ 를 true 로 남겨 두어 폴 루프가 빙돌고 fd 가 새는 버그가 있었다)
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 return alive_;
@@ -125,7 +125,10 @@ bool Session::Pump() {
         }
         Push(buf, static_cast<size_t>(n));
     }
-    return alive_;
+
+    alive_ = false;
+    Close();
+    return false;
 }
 
 } // namespace virtualkvm

@@ -126,31 +126,28 @@ namespace RaspberryPi_Lib
                 if (m_state != State_Connected)
                     return;
 
-                int dx = Clamp_Axis(rel_x);
-                int dy = Clamp_Axis(rel_y);
-
                 try
                 {
-                    // ±127 을 초과하는 이동은 여러 리포트로 분할 전송한다.
-                    while (rel_x > Max_Axis_Delta || rel_x < -Max_Axis_Delta)
+                    // ±127 을 초과하는 이동은 축 합산이 보존되게 여러 리포트로 분할 전송한다.
+                    // (기존 구현은 분할 후 클램프한 값을 마지막 리포트에 다시 실어 과전송했다)
+                    // 버튼(byte[0])은 눌림 상태를 그대로 유지한 채로 전송한다.
+                    while (rel_x > Max_Axis_Delta || rel_x < -Max_Axis_Delta ||
+                           rel_y > Max_Axis_Delta || rel_y < -Max_Axis_Delta)
                     {
-                        int step = rel_x > 0 ? Max_Axis_Delta : -Max_Axis_Delta;
-                        m_mouse_buffer[1] = (byte)(sbyte)step;
-                        m_mouse_buffer[2] = 0;
+                        int step_x = Clamp_Axis(rel_x);
+                        int step_y = Clamp_Axis(rel_y);
+                        m_mouse_buffer[1] = (byte)(sbyte)step_x;
+                        m_mouse_buffer[2] = (byte)(sbyte)step_y;
                         m_mouse_stream.Write(m_mouse_buffer, 0, m_mouse_buffer.Length);
-                        rel_x -= step;
-                    }
-                    while (rel_y > Max_Axis_Delta || rel_y < -Max_Axis_Delta)
-                    {
-                        int step = rel_y > 0 ? Max_Axis_Delta : -Max_Axis_Delta;
-                        m_mouse_buffer[2] = (byte)(sbyte)step;
-                        m_mouse_buffer[1] = 0;
-                        m_mouse_stream.Write(m_mouse_buffer, 0, m_mouse_buffer.Length);
-                        rel_y -= step;
+                        rel_x -= step_x;
+                        rel_y -= step_y;
                     }
 
-                    m_mouse_buffer[1] = (byte)(sbyte)dx;
-                    m_mouse_buffer[2] = (byte)(sbyte)dy;
+                    if (rel_x == 0 && rel_y == 0)
+                        return;
+
+                    m_mouse_buffer[1] = (byte)(sbyte)rel_x;
+                    m_mouse_buffer[2] = (byte)(sbyte)rel_y;
                     m_mouse_stream.Write(m_mouse_buffer, 0, m_mouse_buffer.Length);
                 }
                 catch (Exception)
@@ -158,9 +155,44 @@ namespace RaspberryPi_Lib
                     // 링크 끊김: 워치독이 재접속을 담당한다. 예외를 흡수하여 UI를 보호한다.
                     m_state = State_Disconnected;
                 }
+            }
+        }
 
+        /// <summary>
+        /// 현재 눌려 있는 모든 입력(키보드 키/모디파이어/마우스 버튼)을 원격에 Up 으로 해제한다.
+        /// 머신전환(Alt+Ctrl+Shift) 토글 시점에 호출하여 원격 쪽 키/버튼 고착(stuck)을 방지한다.
+        /// </summary>
+        public void Flush_Pressed_State()
+        {
+            lock (m_sync)
+            {
+                bool keyboard_dirty = m_press_key_index.Count > 0 || m_keyboard_buffer[0] != 0;
+                bool mouse_dirty = m_mouse_buffer[0] != 0;
+
+                foreach (KeyValuePair<Key, int> entry in m_press_key_index)
+                    m_keyboard_buffer[entry.Value] = 0;
+                m_press_key_index.Clear();
+                Initial_Keyboard();
+                m_keyboard_buffer[0] = 0;
+
+                m_mouse_buffer[0] = 0;
                 m_mouse_buffer[1] = 0;
                 m_mouse_buffer[2] = 0;
+
+                if (m_state != State_Connected)
+                    return;
+
+                try
+                {
+                    if (keyboard_dirty)
+                        m_keyboard_stream.Write(m_keyboard_buffer, 0, m_keyboard_buffer.Length);
+                    if (mouse_dirty)
+                        m_mouse_stream.Write(m_mouse_buffer, 0, m_mouse_buffer.Length);
+                }
+                catch (Exception)
+                {
+                    m_state = State_Disconnected;
+                }
             }
         }
 

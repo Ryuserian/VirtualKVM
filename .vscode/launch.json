@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "VirtualKVM (Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-debug",
+            "program": "${workspaceFolder}/VirtualKVM/bin/Debug/VirtualKVM.exe",
+            "cwd": "${workspaceFolder}/VirtualKVM/bin/Debug",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": "VirtualKVM (Release)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-release",
+            "program": "${workspaceFolder}/VirtualKVM/bin/Release/VirtualKVM.exe",
+            "cwd": "${workspaceFolder}/VirtualKVM/bin/Release",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
+}

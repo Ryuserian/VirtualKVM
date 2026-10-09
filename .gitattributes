@@ -1,0 +1,26 @@
+# 개행 통일: 저장소(LFS) 내 파일은 LF 기준, Windows 전용 텍스트만 CRLF
+* text=auto eol=lf
+
+# Windows 전용 산출물/설정
+*.sln text eol=crlf
+*.csproj text eol=crlf
+*.resx text eol=crlf
+*.settings text eol=crlf
+*.config text eol=crlf
+
+# Linux 실행 파일은 반드시 LF
+*.sh text eol=lf
+*.service text eol=lf
+Makefile text eol=lf
+*.c text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+
+# 바이너리
+*.ico binary
+*.png binary
+*.dll binary
+*.exe binary
+*.nupkg binary
+*.p7s binary
+RaspberryPi-Lib/Resources/RaspberryPiZeroW-HID binary

@@ -2,6 +2,9 @@
 Description=VirtualKVM HID daemon (Raspberry Pi Zero W)
 After=network-online.target
 Wants=network-online.target
+# /dev/hidg0,1 이 먼저 준비되어야 세션 open 이 성공한다
+Requires=virtualkvm-usb-gadget.service
+After=virtualkvm-usb-gadget.service
 
 [Service]
 Type=simple

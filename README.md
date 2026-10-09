@@ -128,18 +128,16 @@ scp build/RaspberryPiZeroW-HID pi@<Pi IP>:~/Desktop/
 
 ```bash
 cd VirtualKVM/firmware
-sudo make install        # /usr/local/bin + systemd enable --now
-# 또는 수동:
-sudo install -m 755 build/RaspberryPiZeroW-HID /usr/local/bin/
-sudo cp systemd/virtualkvm.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now virtualkvm.service
+sudo make install   # 바이너리 + setup_usb_gadget.sh + systemd 서비스 2종 활성화
 journalctl -u virtualkvm -f
 ```
 
-Windows 앱의 **Connect** 는 SSH 로 접속해 HID 데몬을 `setsid nohup` 으로 자동 기동하고
-USB gadget 구성도 자동 주입합니다. systemd 를 쓰면 데몬 crash 시 자동 재기동되어
-이중 안전망이 됩니다.
+- **USB gadget 활성화는 부팅마다 필요하다** — `make install` 은
+  `virtualkvm-usb-gadget.service`(oneshot) 를 enable 하여 부팅 시 configfs gadget 을
+  자동으로 구성/활성화합니다. 그 다음 `virtualkvm.service`(데몬) 가 hidg 준비를 기다려 기동합니다.
+- Windows 앱의 **Connect** 도 SSH 로 접속해 HID 데몬을 `setsid nohup` 으로 자동 기동하고
+  USB gadget 구성을 자동 주입하므로, 앱 사용 시에는 위 절차가 생략되어도 동작합니다.
+  단 앱 없이 Pi 단독 부팅 후 HID 로 노출되려면 gadget 서비스(또는 수동 `setup_usb_gadget.sh`) 가 필요합니다.
 
 ## 연결 안정성 (장시간 사용 대응)
 

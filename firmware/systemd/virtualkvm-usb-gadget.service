@@ -1,0 +1,15 @@
+[Unit]
+Description=VirtualKVM USB gadget setup (HID keyboard+mouse, configfs)
+Documentation=https://github.com/Ryuserian/VirtualKVM
+# UDC 바인딩은 USB 컨트롤러(dwc2) 플랫폼 디바이스 노출 후 가능
+After=systemd-udev-settle.service
+Before=virtualkvm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/setup_usb_gadget.sh
+ExecStop=/bin/sh -c 'echo "" > /sys/kernel/config/usb_gadget/g1/UDC || true'
+
+[Install]
+WantedBy=multi-user.target

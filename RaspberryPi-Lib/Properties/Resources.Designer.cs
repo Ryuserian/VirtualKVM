@@ -69,5 +69,15 @@ namespace RaspberryPi_Lib.Properties {
                 return ((byte[])(obj));
             }
         }
+        
+        /// <summary>
+        ///   System.Byte[] 형식의 지역화된 리소스를 찾습니다.
+        /// </summary>
+        internal static byte[] Usb_Setup_Script {
+            get {
+                object obj = ResourceManager.GetObject("Usb_Setup_Script", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
     }
 }

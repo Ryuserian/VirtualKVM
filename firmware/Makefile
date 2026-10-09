@@ -42,12 +42,15 @@ $(OUT): $(OBJS)
 	$(CXX) $(OBJS) -o $@ $(LDFLAGS)
 	@echo "built: $@"
 
-# Windows 앱 의 Install() 이 데몬 파일을 Desktop/ 에 올린 뒤 /usr/local/bin 에 설치하던 흐름을
-# systemd 서비스로 승격할 때 사용:
+# 일괄 설치: 데몬 바이너리 + USB gadget 스크립트 + systemd 서비스 2종
+# (데몬 단독 부팅 후에도 HID 노출되려면 gadget 서비스로 부팅 시 활성화 필요)
 install: $(OUT)
 	sudo install -m 755 $(OUT) /usr/local/bin/RaspberryPiZeroW-HID
+	sudo install -m 755 setup_usb_gadget.sh /usr/local/bin/setup_usb_gadget.sh
 	sudo cp systemd/virtualkvm.service /etc/systemd/system/
+	sudo cp systemd/virtualkvm-usb-gadget.service /etc/systemd/system/
 	sudo systemctl daemon-reload
+	sudo systemctl enable virtualkvm-usb-gadget.service
 	sudo systemctl enable --now virtualkvm.service
 
 clean:

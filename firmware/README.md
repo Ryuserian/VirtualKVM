@@ -52,40 +52,54 @@ scp build/RaspberryPiZeroW-HID pi@192.168.0.101:~/Desktop/
 | `make` | 네이티브 빌드 |
 | `make CROSS_COMPILE=arm-linux-gnueabihf-` | armv6 hard-float 크로스 빌드 |
 | `make clean` | `build/` 삭제 |
-| `make install` | `/usr/local/bin` + systemd 서비스 설치 |
+| `make install` | 바이너리 + gadget 스크립트 + systemd 서비스 2종 설치/활성화 |
 
 ## 실행
+
+> **중요**: 데몬이 `/dev/hidg0,1` 에 쓰려면 먼저 **USB gadget(configfs) 활성화**가
+> 필요합니다. configfs 설정은 재부팅 시 사라지므로 **부팅마다 1회** 활성화해야 하며,
+> 아래 systemd 경로로 자동화하는 것을 권장합니다.
+> (Windows 앱의 `Connect` 도 SSH 접속 후 동일 내용을 자동 주입합니다.)
 
 ### 수동 실행
 
 ```bash
-# USB gadget 구성 (첫 1회 또는 리부팅 후)
-# Windows 앱의 Connect 가 자동으로 처리하지만, 수동으로는:
-sudo sh setup_usb_gadget.sh   # (TODO: future)
+# 1) USB gadget 활성화 (매 부팅 후 1회) — /dev/hidg0(키보드), /dev/hidg1(마우스) 노출
+sudo ./setup_usb_gadget.sh
 
-# 데몬 직접 실행
-./build/RaspberryPiZeroW-HID 5000
+# 2) 데몬 직접 실행
+sudo ./build/RaspberryPiZeroW-HID 5000
 ```
 
 ### systemd 서비스로 상주 (권장)
 
 ```bash
+# 한 번에: 바이너리 + gadget 스크립트 + 서비스 2종 설치/활성화
+sudo make install
+
+# 또는 수동
 sudo install -m 755 build/RaspberryPiZeroW-HID /usr/local/bin/
+sudo install -m 755 setup_usb_gadget.sh        /usr/local/bin/
 sudo cp systemd/virtualkvm.service /etc/systemd/system/
+sudo cp systemd/virtualkvm-usb-gadget.service /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo systemctl enable virtualkvm-usb-gadget.service   # 부팅 시 gadget 활성화
 sudo systemctl enable --now virtualkvm.service
 
 # 로그 확인
 journalctl -u virtualkvm -f
+journalctl -u virtualkvm-usb-gadget -f
 ```
 
-`Restart=always` + Windows 앱의 5초 워치독으로 이중 안전망을 구성합니다.
+- `virtualkvm-usb-gadget.service`(oneshot): 부팅 시 configfs gadget 구성 + UDC 바인딩
+- `virtualkvm.service`: 데몬. 위 gadget 서비스에 `Requires=`로 의존하여 hidg 준비 후 기동
+- `Restart=always` + Windows 앱의 5초 워치독으로 이중 안전망을 구성합니다.
 
-## USB gadget 구성 (HID 노출)
+## USB gadget 구성 상세 (수동 이해용)
 
 대상 PC 에 키보드/마우스로 인식되게 하려면 configfs 로 USB gadget 을 만들어야 합니다.
-Windows 앱이 SSH 접속 후 아래 내용을 setup 스크립트로 자동 주입하지만,
-직접 구성해야 하는 경우:
+[`setup_usb_gadget.sh`](setup_usb_gadget.sh) 가 수행하는 내용과 동일합니다
+(직접 구성해야 하는 상황용 레퍼런스):
 
 ```bash
 sudo su
@@ -119,9 +133,20 @@ ln -sf functions/hid.usb1 configs/c.1/
 ls /sys/class/udc > UDC
 ```
 
-> Zero W 2 (RP0) 등 OS/하드웨어에 따라 `/sys/class/udc` 의 노드명과 `otg` 활성화
-> 옵션(`dtoverlay=dwc2`) 이 다를 수 있습니다. config.txt 에 `dtoverlay=dwc2` 가
-> enabled 되어야 OTG 포트가 디바이스 모드로 동작합니다.
+### 사전 조건: dwc2 (USB OTG) 오버레이 — 필수
+
+configfs 구성만으로는 부족하고, **device mode UDC**(dwc2 컨트롤러) 가 활성화되어
+있어야 합니다. `/boot/firmware/config.txt`(구 raspbian: `/boot/config.txt`) 에
+아래를 추가하고 재부팅하세요:
+
+```ini
+dtoverlay=dwc2
+```
+
+- `raspi-config` 의 인터페이스 메뉴 이름이 OS 버전에 따라 달라 직관적이지 않을 수 있으므로
+  config.txt 직접 편집을 권장합니다.
+- Zero W 2 (RP0) 등 하드웨어/OS 에 따라 `/sys/class/udc` 의 노드명이 다를 수 있습니다.
+  `ls /sys/class/udc` 로 확인합니다 (스크립트는 첫 번째 노드에 바인딩합니다).
 
 ## 동작 / 프로토콜
 
@@ -139,7 +164,9 @@ ls /sys/class/udc > UDC
 | [`src/session.h/.cpp`](src/session.cpp) | 단일 연결: 악수→hidg 연결→리포트 스트림 |
 | [`src/signal_handler.h/.cpp`](src/signal_handler.cpp) | signalfd: SIGINT/SIGTERM/SIGHUP(종료), SIGPIPE(무시) |
 | [`src/virtualkvm.h`](src/virtualkvm.h) | 프로토콜 상수(포트/매직/디바이스 경로) |
-| [`systemd/virtualkvm.service`](systemd/virtualkvm.service) | 상주 실행 + 자동 재기동 |
+| [`setup_usb_gadget.sh`](setup_usb_gadget.sh) | USB gadget(configfs) 활성화 — 부팅 시 1회 실행 |
+| [`systemd/virtualkvm.service`](systemd/virtualkvm.service) | 데몬 상주 실행 + 자동 재기동 |
+| [`systemd/virtualkvm-usb-gadget.service`](systemd/virtualkvm-usb-gadget.service) | 부팅 시 gadget 자동 활성화 |
 
 ## 테스트 (빌드 sanity check)
 

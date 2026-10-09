@@ -121,4 +121,8 @@
   <data name="RaspberryPiZeroW_HID" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\RaspberryPiZeroW-HID;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <!-- firmware/setup_usb_gadget.sh 를 그대로 임베드 — 앱과 Pi(systemd) 가 공유하는 단일 소스 -->
+  <data name="Usb_Setup_Script" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\..\firmware\setup_usb_gadget.sh;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
 </root>

@@ -1,0 +1,13 @@
+# Visual Studio / MSBuild 산출물
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+
+# NuGet 패키지는 저장소에 커밋하지 않는다 (복원은 nuget restore)
+# 단, 현 프로젝트의 재현성을 위해 기존 packages/ 추적은 유지한다.
+
+# VS Code
+.vs/

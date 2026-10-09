@@ -34,10 +34,17 @@ namespace VirtualKVM
 
         public const int WM_KEYDOWN = 0x100;
         public const int WM_KEYUP = 0x101;
+        public const int WM_SYSKEYDOWN = 0x104;
+        public const int WM_SYSKEYUP = 0x105;
 
         IntPtr hInstance = IntPtr.Zero;
         private IntPtr key_hook = IntPtr.Zero;
         private IntPtr mouse_hook = IntPtr.Zero;
+
+        // 네이티브 후킹에 사용하는 delegate 인스턴스를 필드에 보관한다.
+        // (미보관 시 GC 가 콜백을 회수하여 프로세스 크래시로 이어질 수 있다)
+        private LowLevelProc key_hook_proc = null;
+        private LowLevelProc mouse_hook_proc = null;
 
         private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
         public delegate bool delegateKeyProc(int nCode, IntPtr wParam, KeyHookStruct lParam);
@@ -94,12 +101,17 @@ namespace VirtualKVM
 
         public bool InstallHook()
         {
-            hInstance = LoadLibrary("User32");
+            if (hInstance == IntPtr.Zero)
+                hInstance = LoadLibrary("User32");
 
-            key_hook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyHookProc, hInstance, 0);
-            mouse_hook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, hInstance, 0);
+            // delegate 인스턴스를 필드에 고정 후 후킹 등록 (GC 콜백 크래시 방지)
+            key_hook_proc = KeyHookProc;
+            mouse_hook_proc = MouseHookProc;
 
-            return true;
+            key_hook = SetWindowsHookEx(WH_KEYBOARD_LL, key_hook_proc, hInstance, 0);
+            mouse_hook = SetWindowsHookEx(WH_MOUSE_LL, mouse_hook_proc, hInstance, 0);
+
+            return key_hook != IntPtr.Zero && mouse_hook != IntPtr.Zero;
         }
 
         public bool UninsatllHook()
@@ -139,7 +151,10 @@ namespace VirtualKVM
 
         private IntPtr KeyHookProc(int code, IntPtr wParam, IntPtr lParam)
         {
-            if (code >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_KEYUP))
+            // WM_SYSKEYDOWN/WM_SYSKEYUP(Alt 조합 등)도 처리해야 시스템 키 Up 유실(고착)을 막을 수 있다.
+            if (code >= 0 &&
+                (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_KEYUP ||
+                 wParam == (IntPtr)WM_SYSKEYDOWN || wParam == (IntPtr)WM_SYSKEYUP))
             {
                 if (KeyHookEvent != null)
                     if (!KeyHookEvent(code, wParam, (KeyHookStruct)Marshal.PtrToStructure(lParam, typeof(KeyHookStruct))))

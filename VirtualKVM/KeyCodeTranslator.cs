@@ -284,7 +284,7 @@ namespace VirtualKVM
                 isSysKey = codeTable[virtualKey].isSysKey;
                 keyCode = codeTable[virtualKey].keyCode;
 
-                System.Diagnostics.Debug.WriteLine($"{isSysKey} {keyCode} {codeTable[virtualKey].msg}");
+                System.Diagnostics.Debug.WriteLine(string.Format("{0} {1} {2}", isSysKey, keyCode, codeTable[virtualKey].msg));
             }
             else
                 return false;

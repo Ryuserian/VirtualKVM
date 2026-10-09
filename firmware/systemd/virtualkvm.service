@@ -1,0 +1,22 @@
+[Unit]
+Description=VirtualKVM HID daemon (Raspberry Pi Zero W)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/RaspberryPiZeroW-HID 5000
+# 비정상 종료 시 3초 후 자동 재기동 -> Windows 앱 워치독과 이중 안전망
+Restart=always
+RestartSec=3
+# 시그널은 signalfd 로 수신하므로 kill/SIGTERM 만 지정
+KillSignal=SIGTERM
+TimeoutStopSec=5
+# 하드웨어 노드 접근
+SupplementaryGroups=input
+# 로그는 journald 로 수집 (표준오류 redirect 자동)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

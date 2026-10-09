@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Linux-WSL",
+            "includePath": [
+                "${workspaceFolder}/firmware/src",
+                "/usr/include",
+                "/usr/include/c++/13"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c17",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerArgs": []
+        }
+    ],
+    "version": 4
+}

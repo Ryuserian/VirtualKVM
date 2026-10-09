@@ -44,7 +44,7 @@
             // 
             this.notifyIcon.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Info;
             this.notifyIcon.ContextMenuStrip = this.contextMenuStrip;
-            this.notifyIcon.Text = "notifyIcon";
+            this.notifyIcon.Text = "VirtualKVM";
             this.notifyIcon.Visible = true;
             // 
             // contextMenuStrip

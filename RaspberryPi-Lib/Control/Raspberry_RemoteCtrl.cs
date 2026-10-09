@@ -22,6 +22,7 @@ namespace RaspberryPi_Lib
         private const string Usb_Setup_Script_Path = "/tmp/virtualkvm_usb_setup.sh";
 
         private readonly string m_ip_address;
+        private readonly int m_ssh_port;
         private readonly string m_user_id;
         private readonly string m_password;
 
@@ -34,9 +35,10 @@ namespace RaspberryPi_Lib
 
         #region Constructor
 
-        internal Raspberry_RemoteCtrl(string ip_address, string user, string password)
+        internal Raspberry_RemoteCtrl(string ip_address, int ssh_port, string user, string password)
         {
             m_ip_address = ip_address;
+            m_ssh_port = ssh_port;
             m_user_id = user;
             m_password = password;
         }
@@ -180,7 +182,7 @@ namespace RaspberryPi_Lib
 
         private void Connect_Ssh()
         {
-            var connection_info = new ConnectionInfo(m_ip_address, 22, m_user_id,
+            var connection_info = new ConnectionInfo(m_ip_address, m_ssh_port, m_user_id,
                 new PasswordAuthenticationMethod(m_user_id, m_password))
             {
                 Timeout = TimeSpan.FromSeconds(10),            // 접속 타임아웃
@@ -282,7 +284,7 @@ namespace RaspberryPi_Lib
             sb.AppendLine("ls /sys/class/udc > UDC");
 
             byte[] script_bytes = Encoding.ASCII.GetBytes(sb.ToString());
-            using (var sftp = new SftpClient(m_ip_address, m_user_id, m_password))
+            using (var sftp = new SftpClient(m_ip_address, m_ssh_port, m_user_id, m_password))
             {
                 sftp.Connect();
                 using (var ms = new System.IO.MemoryStream(script_bytes))

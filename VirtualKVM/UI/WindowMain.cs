@@ -10,6 +10,9 @@ namespace VirtualKVM
         private RaspberryPi_Lib.Raspberry_RemoteCtrl remoteCtrl = null;
         private RaspberryPi_Lib.Raspberry_LocalCtrl localCtrl = null;
 
+        // 연결 설정(IP/포트/계정): %APPDATA%\VirtualKVM\config.json 에 저장된다.
+        private AppConfig config = null;
+
         private Win32 win32Ctrl = new Win32();
         private KeyCodeTranslator keyCodeTranslator = new KeyCodeTranslator();
 
@@ -38,11 +41,18 @@ namespace VirtualKVM
 
             notifyIcon.Icon = VirtualKVM.Properties.Resources.ico_normal;
 
+            // Windows 11 은 신규 트레이 아이콘을 ^ 접힘 영역으로 숨긴다.
+            // 풍선 알림으로 실행 사실과 조작 방법을 명시적으로 안내한다.
+            notifyIcon.Visible = true;
+            notifyIcon.ShowBalloonTip(4000, "VirtualKVM", "시스템 트레이에서 실행 중입니다.\n트레이 아이콘(^ 접힘 영역 포함)을 우클릭하여 연결/설정하세요.", ToolTipIcon.Info);
+
             Application.ApplicationExit += Application_ApplicationExit;
 
-            raspberryCtrl = new RaspberryPi_Lib.Raspberry("192.168.0.101", "pi", "raspberry");
+            config = AppConfig.Load();
+
+            raspberryCtrl = new RaspberryPi_Lib.Raspberry(config.IpAddress, config.SshPort, config.UserId, config.PlainPassword);
             remoteCtrl = raspberryCtrl.GetRemoteController();
-            localCtrl = raspberryCtrl.GetLocalController();
+            localCtrl = raspberryCtrl.GetLocalController(config.HidPort);
 
             watchdogTimer = new System.Windows.Forms.Timer();
             watchdogTimer.Interval = 5000;
@@ -137,6 +147,60 @@ namespace VirtualKVM
 
         private void MNU_CONFIG_Click(object sender, EventArgs e)
         {
+            using (WindowConfig window = new WindowConfig(config))
+            {
+                if (window.ShowDialog() != DialogResult.OK)
+                    return;
+
+                // 연결 유지 중에 설정이 바뀌면 현재 연결을 걷어내고 새 설정으로 재구성한다.
+                // (훅은 유지 — 전환키 토글 동작에는 영향 없음)
+                bool was_connected = MNU_DISCONNECT.Enabled;
+
+                if (was_connected)
+                {
+                    keyAllowed = true;
+
+                    if (watchdogTimer != null)
+                        watchdogTimer.Stop();
+
+                    if (localCtrl != null)
+                        localCtrl.Disconnect();
+                    if (remoteCtrl != null)
+                        remoteCtrl.Stop();
+                }
+
+                raspberryCtrl = new RaspberryPi_Lib.Raspberry(config.IpAddress, config.SshPort, config.UserId, config.PlainPassword);
+                remoteCtrl = raspberryCtrl.GetRemoteController();
+                localCtrl = raspberryCtrl.GetLocalController(config.HidPort);
+
+                // 이전 연결이 살아있었다면 새 설정으로 즉시 재접속을 시도한다.
+                if (was_connected)
+                    Try();
+            }
+        }
+
+        /// <summary>
+        /// 새 설정으로 연결(SSH/데몬 -> HID TCP)을 시도하고 결과를 반영한다.
+        /// 성공/실패 모두 트레이 아이콘 상태로 표시한다.
+        /// </summary>
+        private void Try()
+        {
+            if (!remoteCtrl.Start())
+            {
+                SetTrayIcon(VirtualKVM.Properties.Resources.ico_error);
+                return;
+            }
+
+            if (!localCtrl.Connect())
+            {
+                remoteCtrl.Stop();
+                SetTrayIcon(VirtualKVM.Properties.Resources.ico_error);
+                return;
+            }
+
+            watchdog_reboot_tries = 0;
+            watchdogTimer.Start();
+            SetTrayIcon(VirtualKVM.Properties.Resources.ico_linked);
         }
 
         private void MNU_EXIT_Click(object sender, EventArgs e)

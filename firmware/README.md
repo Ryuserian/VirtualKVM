@@ -15,8 +15,8 @@ Zero W 의 resources 가 빈약하지만 데몬이 매우 작기 때문에 직�
 sudo apt update
 sudo apt install -y build-essential git
 
-# 2) 코드 가져오기 (Gitea 서버)
-git clone http://todostudio.com:3000/filepointer/VirtualKVM.git
+# 2) 코드 가져오기
+git clone https://github.com/Ryuserian/VirtualKVM.git
 cd VirtualKVM/firmware
 
 # 3) 빌드
